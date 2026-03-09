@@ -9,12 +9,12 @@ def read_image_and_create_histogram(image_path):
     if img is None:
         print("Error: Image not found.")
         return None
-    #split the image into greyscale manually
+    #Convert the image into greyscale manually
     gray_img = convert_to_grayscale(img)
     #calculate the histogram of the grayscale image
     histogram = calculate_histogram(gray_img)
 
-    return img, histogram
+    return img, gray_img, histogram
 
 
 
@@ -22,8 +22,8 @@ def convert_to_grayscale(img):
     #Converts the BGR image to grayscale by averaging the color channels (Red, Green, Blue) for each pixel.
     #Get the image dimensions
     height, width = img.shape[:2]
-    #Create an empty grayscale image to store the converted pixel values
-    gray = [[0 for _ in range(width)] for _ in range(height)]
+    #Create an empty NumPy grayscale image to store the converted pixel values
+    gray = np.zeros((height, width), dtype=np.uint8)
     #Iterate through each pixel in the original image and calculate the average intensity to create the grayscale image
     for i in range(height):
         for j in range(width):
@@ -34,19 +34,34 @@ def convert_to_grayscale(img):
     return gray
 
 
-
 #Calculates the histogram of image by counting the number of pixels for each intensity value (0-255).
 def calculate_histogram(gray_img):
     histogram = [0] * 256
+    
+    height, width = gray_img.shape
     #Iterate through each pixel in the image and count the intensity values
-    for row in gray_img:
-        for pixel in row:
-            histogram[pixel] += 1
+    for i in range(height):
+        for j in range(width):
+            
+            pixel_value = gray_img[i][j]
+            histogram[pixel_value] += 1
+    
+            
 
 
     return histogram
 
-
+def plot_histogram(histogram, title = "Histogram"):
+    plt.figure(figsize=(8, 4))
+    plt.plot(histogram, color='black')
+    plt.title(title)
+    plt.xlabel('Pixel Intensity')
+    plt.ylabel('Frequency')
+    plt.grid(False)
+    plt.show()
+    
+    
+    
 
 
 
