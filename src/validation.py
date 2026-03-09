@@ -3,18 +3,11 @@ import numpy as np
 
 
 def to_binary_mask(binary_img):
-    
-    #Convert a 0/255 binary image into a 0/1 mask.
-    
     return (binary_img > 0).astype(np.uint8)
 
 
 def get_neighbors_8(x, y, height, width):
-    
-    #Return valid 8-connected neighbors for a pixel.
-    
     neighbors = []
-
     for dx in (-1, 0, 1):
         for dy in (-1, 0, 1):
             if dx == 0 and dy == 0:
@@ -30,13 +23,6 @@ def get_neighbors_8(x, y, height, width):
 
 
 def connected_component_labeling(binary_img):
-    
-    #Manual connected-component labeling using 8-connectivity.
-
-    #Returns:
-       # label_map: 2D array of component labels
-       # components: list of dictionaries with component measurements
-    
     mask = to_binary_mask(binary_img)
     height, width = mask.shape
 
@@ -48,8 +34,6 @@ def connected_component_labeling(binary_img):
         for y in range(width):
             if mask[x, y] == 1 and label_map[x, y] == 0:
                 current_label += 1
-
-                # Flood fill / DFS
                 stack = [(x, y)]
                 label_map[x, y] = current_label
 
@@ -61,14 +45,10 @@ def connected_component_labeling(binary_img):
                     px, py = stack.pop()
                     pixels.append((px, py))
 
-                    if px < min_x:
-                        min_x = px
-                    if px > max_x:
-                        max_x = px
-                    if py < min_y:
-                        min_y = py
-                    if py > max_y:
-                        max_y = py
+                    min_x = min(min_x, px)
+                    max_x = max(max_x, px)
+                    min_y = min(min_y, py)
+                    max_y = max(max_y, py)
 
                     for nx, ny in get_neighbors_8(px, py, height, width):
                         if mask[nx, ny] == 1 and label_map[nx, ny] == 0:
@@ -79,43 +59,30 @@ def connected_component_labeling(binary_img):
                 centroid_x = float(np.mean([p[1] for p in pixels]))
                 centroid_y = float(np.mean([p[0] for p in pixels]))
 
-                component = {
-                    "label": current_label,
-                    "pixels": pixels,
-                    "area": area,
-                    "bbox": (min_x, min_y, max_x, max_y),
-                    "width": max_y - min_y + 1,
-                    "height": max_x - min_x + 1,
-                    "centroid_x": centroid_x,
-                    "centroid_y": centroid_y,
-                }
-
-                components.append(component)
+                components.append(
+                    {
+                        "label": current_label,
+                        "pixels": pixels,
+                        "area": area,
+                        "bbox": (min_x, min_y, max_x, max_y),
+                        "width": max_y - min_y + 1,
+                        "height": max_x - min_x + 1,
+                        "centroid_x": centroid_x,
+                        "centroid_y": centroid_y,
+                    }
+                )
 
     return label_map, components
 
 
 def component_to_mask(component, image_shape):
-    
-    #Convert one selected component into its own binary 0/255 image.
-    
     mask = np.zeros(image_shape, dtype=np.uint8)
-
     for x, y in component["pixels"]:
         mask[x, y] = 255
-
     return mask
 
 
 def select_best_ring_component(components, image_shape, min_area_ratio=0.005):
-    
-    #Select the most likely O-ring component.
-
-    #Strategy:
-    #- reject tiny components
-    #- prefer larger components
-    #- prefer components near the image centre
-    
     if len(components) == 0:
         return None
 
@@ -135,9 +102,7 @@ def select_best_ring_component(components, image_shape, min_area_ratio=0.005):
         dy = comp["centroid_y"] - image_center_y
         center_distance = math.sqrt(dx * dx + dy * dy)
 
-        # Larger area is better, smaller center distance is better
         score = comp["area"] - (2.0 * center_distance)
-
         candidates.append((score, comp))
 
     if len(candidates) == 0:
@@ -148,17 +113,11 @@ def select_best_ring_component(components, image_shape, min_area_ratio=0.005):
 
 
 def get_foreground_points(binary_img):
-    
-    #Collect x/y coordinates of foreground pixels.
-    
     ys, xs = np.where(binary_img > 0)
     return xs, ys
 
 
 def estimate_ring_center(binary_img):
-    
-    #Estimate ring centre as centroid of foreground pixels.
-    
     xs, ys = get_foreground_points(binary_img)
     if len(xs) == 0:
         return None
@@ -169,9 +128,6 @@ def estimate_ring_center(binary_img):
 
 
 def radial_bounds_by_angle(binary_img, center_x, center_y, angle_steps=360):
-    
-    #For each angle, find the first and last radius where foreground exists.
-    
     height, width = binary_img.shape
     max_radius = int(
         min(center_x, width - 1 - center_x, center_y, height - 1 - center_y)
@@ -199,9 +155,6 @@ def radial_bounds_by_angle(binary_img, center_x, center_y, angle_steps=360):
 
 
 def longest_zero_run(binary_array):
-    
-    #Find the largest consecutive missing-angle gap in circular coverage.
-    
     doubled = np.concatenate([binary_array, binary_array])
     current_run = 0
     max_run = 0
@@ -216,10 +169,7 @@ def longest_zero_run(binary_array):
     return min(max_run, len(binary_array))
 
 
-def boundary_neighbor_consistency(radius_values, valid_mask, max_step_change=3.0):
-    
-    #Check if neighboring boundary points have similar radius values.
-    
+def boundary_neighbor_consistency(radius_values, valid_mask, max_step_change=1.5):
     valid_indices = np.where(valid_mask == 1)[0]
     if len(valid_indices) < 10:
         return 0.0
@@ -243,144 +193,36 @@ def boundary_neighbor_consistency(radius_values, valid_mask, max_step_change=3.0
     return consistent_count / comparison_count
 
 
+def max_radius_jump(radius_values, valid_mask):
+    valid_indices = np.where(valid_mask == 1)[0]
+    if len(valid_indices) < 2:
+        return 0.0
+
+    max_jump = 0.0
+
+    for idx in valid_indices:
+        next_idx = (idx + 1) % len(radius_values)
+        if valid_mask[next_idx] == 0:
+            continue
+
+        delta = abs(float(radius_values[next_idx]) - float(radius_values[idx]))
+        if delta > max_jump:
+            max_jump = delta
+
+    return max_jump
+
+
 def classify_ring_component(
     binary_img,
-    min_boundary_coverage=0.85,
-    max_gap_degrees=20,
-    max_radius_std=8.0,
+    min_boundary_coverage=0.995,
+    max_gap_degrees=4,
+    max_radius_std=2.5,
     min_thickness=2.0,
     min_inner_radius=5.0,
     max_thickness_ratio=0.92,
-    max_step_change=3.0,
-    min_neighbor_consistency=0.70,
-):
-    
-    #Classify a single isolated ring component as Pass or Fail.
-    
-    center = estimate_ring_center(binary_img)
-    if center is None:
-        return "Fail", {"reason": "No ring foreground found"}
-
-    center_x, center_y = center
-    inner_radii, outer_radii = radial_bounds_by_angle(binary_img, center_x, center_y)
-
-    valid_inner = (inner_radii >= 0).astype(np.uint8)
-    valid_outer = (outer_radii >= 0).astype(np.uint8)
-    valid_both = ((inner_radii >= 0) & (outer_radii >= 0)).astype(np.uint8)
-
-    inner_coverage = float(np.mean(valid_inner))
-    outer_coverage = float(np.mean(valid_outer))
-    both_coverage = float(np.mean(valid_both))
-    missing_gap = int(longest_zero_run(valid_both))
-
-    if np.sum(valid_both) == 0:
-        return "Fail", {"reason": "No valid inner/outer ring boundary found"}
-
-    inner_values = inner_radii[valid_both == 1]
-    outer_values = outer_radii[valid_both == 1]
-    thickness_values = outer_values - inner_values
-
-    mean_inner_radius = float(np.mean(inner_values))
-    mean_outer_radius = float(np.mean(outer_values))
-    inner_std = float(np.std(inner_values))
-    outer_std = float(np.std(outer_values))
-    mean_thickness = float(np.mean(thickness_values))
-
-    thickness_ratio = (
-        mean_thickness / mean_outer_radius if mean_outer_radius > 0 else 1.0
-    )
-
-    inner_neighbor_consistency = boundary_neighbor_consistency(
-        inner_radii, valid_both, max_step_change=max_step_change
-    )
-    outer_neighbor_consistency = boundary_neighbor_consistency(
-        outer_radii, valid_both, max_step_change=max_step_change
-    )
-
-    is_pass = (
-        inner_coverage >= min_boundary_coverage
-        and outer_coverage >= min_boundary_coverage
-        and both_coverage >= min_boundary_coverage
-        and missing_gap <= max_gap_degrees
-        and mean_inner_radius >= min_inner_radius
-        and inner_std <= max_radius_std
-        and outer_std <= max_radius_std
-        and mean_thickness >= min_thickness
-        and thickness_ratio <= max_thickness_ratio
-        and inner_neighbor_consistency >= min_neighbor_consistency
-        and outer_neighbor_consistency >= min_neighbor_consistency
-    )
-
-    label = "Pass" if is_pass else "Fail"
-
-    details = {
-        "center_x": round(center_x, 2),
-        "center_y": round(center_y, 2),
-        "inner_coverage": round(inner_coverage, 4),
-        "outer_coverage": round(outer_coverage, 4),
-        "both_coverage": round(both_coverage, 4),
-        "largest_missing_gap_deg": missing_gap,
-        "mean_inner_radius": round(mean_inner_radius, 3),
-        "mean_outer_radius": round(mean_outer_radius, 3),
-        "inner_radius_std": round(inner_std, 3),
-        "outer_radius_std": round(outer_std, 3),
-        "mean_ring_thickness": round(mean_thickness, 3),
-        "thickness_ratio": round(thickness_ratio, 3),
-        "inner_neighbor_consistency": round(inner_neighbor_consistency, 3),
-        "outer_neighbor_consistency": round(outer_neighbor_consistency, 3),
-        "min_boundary_coverage": min_boundary_coverage,
-        "max_gap_degrees": max_gap_degrees,
-        "max_radius_std": max_radius_std,
-        "min_thickness": min_thickness,
-        "min_inner_radius": min_inner_radius,
-        "max_thickness_ratio": max_thickness_ratio,
-        "max_step_change": max_step_change,
-        "min_neighbor_consistency": min_neighbor_consistency,
-    }
-
-    return label, details
-
-
-def validate_oring(binary_img):
-    
-    #Validtion Process:
-    # label connected components
-    # select best ring candidate
-    #classify that ring candidate
-    
-    label_map, components = connected_component_labeling(binary_img)
-
-    best_component = select_best_ring_component(components, binary_img.shape)
-
-    if best_component is None:
-        return "Fail", {
-            "reason": "No suitable ring component found",
-            "component_count": len(components),
-        }, np.zeros_like(binary_img, dtype=np.uint8)
-
-    ring_mask = component_to_mask(best_component, binary_img.shape)
-
-    label, details = classify_ring_component(ring_mask)
-
-    details["component_count"] = len(components)
-    details["selected_component_area"] = best_component["area"]
-    details["selected_component_bbox"] = best_component["bbox"]
-    details["selected_component_centroid"] = (
-        round(best_component["centroid_x"], 2),
-        round(best_component["centroid_y"], 2),
-    )
-
-    return label, details, ring_mask
-def classify_ring_component(
-    binary_img,
-    min_boundary_coverage=0.92,
-    max_gap_degrees=10,
-    max_radius_std=5.0,
-    min_thickness=2.0,
-    min_inner_radius=5.0,
-    max_thickness_ratio=0.92,
-    max_step_change=2.0,
-    min_neighbor_consistency=0.85,
+    max_step_change=1.5,
+    min_neighbor_consistency=0.995,
+    max_radius_jump_allowed=3.0,
 ):
     center = estimate_ring_center(binary_img)
     if center is None:
@@ -393,13 +235,13 @@ def classify_ring_component(
     valid_outer = (outer_radii >= 0).astype(np.uint8)
     valid_both = ((inner_radii >= 0) & (outer_radii >= 0)).astype(np.uint8)
 
+    if np.sum(valid_both) == 0:
+        return "Fail", {"reason": "No valid inner/outer boundary found"}
+
     inner_coverage = float(np.mean(valid_inner))
     outer_coverage = float(np.mean(valid_outer))
     both_coverage = float(np.mean(valid_both))
     missing_gap = int(longest_zero_run(valid_both))
-
-    if np.sum(valid_both) == 0:
-        return "Fail", {"reason": "No valid inner/outer ring boundary found"}
 
     inner_values = inner_radii[valid_both == 1]
     outer_values = outer_radii[valid_both == 1]
@@ -421,6 +263,9 @@ def classify_ring_component(
         outer_radii, valid_both, max_step_change=max_step_change
     )
 
+    inner_max_jump = max_radius_jump(inner_radii, valid_both)
+    outer_max_jump = max_radius_jump(outer_radii, valid_both)
+
     details = {
         "center_x": round(center_x, 2),
         "center_y": round(center_y, 2),
@@ -436,6 +281,8 @@ def classify_ring_component(
         "thickness_ratio": round(thickness_ratio, 3),
         "inner_neighbor_consistency": round(inner_neighbor_consistency, 3),
         "outer_neighbor_consistency": round(outer_neighbor_consistency, 3),
+        "inner_max_jump": round(inner_max_jump, 3),
+        "outer_max_jump": round(outer_max_jump, 3),
     }
 
     if both_coverage < min_boundary_coverage:
@@ -451,7 +298,7 @@ def classify_ring_component(
         return "Fail", details
 
     if inner_std > max_radius_std or outer_std > max_radius_std:
-        details["reason"] = "Boundary too irregular"
+        details["reason"] = "Boundary irregular"
         return "Fail", details
 
     if mean_thickness < min_thickness:
@@ -470,5 +317,34 @@ def classify_ring_component(
         details["reason"] = "Outer boundary inconsistent"
         return "Fail", details
 
+    if inner_max_jump > max_radius_jump_allowed or outer_max_jump > max_radius_jump_allowed:
+        details["reason"] = "Local boundary jump too large"
+        return "Fail", details
+
     details["reason"] = "All checks passed"
     return "Pass", details
+
+
+def validate_oring(binary_img):
+    label_map, components = connected_component_labeling(binary_img)
+
+    best_component = select_best_ring_component(components, binary_img.shape)
+
+    if best_component is None:
+        return "Fail", {
+            "reason": "No suitable ring component found",
+            "component_count": len(components),
+        }, np.zeros_like(binary_img, dtype=np.uint8)
+
+    ring_mask = component_to_mask(best_component, binary_img.shape)
+    label, details = classify_ring_component(ring_mask)
+
+    details["component_count"] = len(components)
+    details["selected_component_area"] = best_component["area"]
+    details["selected_component_bbox"] = best_component["bbox"]
+    details["selected_component_centroid"] = (
+        round(best_component["centroid_x"], 2),
+        round(best_component["centroid_y"], 2),
+    )
+
+    return label, details, ring_mask

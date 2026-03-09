@@ -69,6 +69,8 @@ def main():
 
         print(f"{image_name}: {label}, threshold={threshold_value}, time={elapsed:.4f}s")
         print(details)
+        
+        
 
         cv.imwrite(os.path.join(binary_folder, f"binary_{image_name}"), binary_img)
         cv.imwrite(os.path.join(cleaned_folder, f"cleaned_{image_name}"), cleaned_img)
